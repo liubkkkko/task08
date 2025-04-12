@@ -30,6 +30,7 @@ resource "azurerm_container_group" "aci" {
     }
   }
 
+  # Перевіряємо, чи правильно передаються облікові дані для доступу до ACR
   image_registry_credential {
     server   = var.acr_login_server
     username = var.acr_admin_username
