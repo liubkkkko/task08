@@ -27,7 +27,7 @@ resource "azurerm_container_registry_task" "build_task" {
     repository_url = var.git_repo_url
     source_type    = "Github"
     branch         = "main"
-    
+
     authentication {
       token      = var.git_pat
       token_type = "PAT"
