@@ -22,7 +22,7 @@ module "acr" {
   location            = azurerm_resource_group.rg.location
   sku                 = var.acr_sku
   image_name          = var.docker_image_name
-  git_repo_url        = "https://github.com/liubkkkko/task08"
+  git_repo_url        = "https://github.com/liubkkkko/task08.git"
   git_pat             = var.git_pat
   tags                = var.tags
 
