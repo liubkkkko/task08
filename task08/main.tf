@@ -1,14 +1,16 @@
+# REMOVE the entire locals {} block from this file
+
 data "azurerm_client_config" "current" {}
 
 resource "azurerm_resource_group" "rg" {
-  name     = local.rg_name
+  name     = local.rg_name # Uses the local defined in locals.tf
   location = var.location
   tags     = var.tags
 }
 
 module "keyvault" {
   source              = "./modules/keyvault"
-  name                = local.keyvault_name
+  name                = local.keyvault_name # Uses the local defined in locals.tf
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   sku                 = var.key_vault_sku
@@ -19,21 +21,23 @@ module "keyvault" {
 
 module "acr" {
   source              = "./modules/acr"
-  name                = local.acr_name
+  name                = local.acr_name # Uses the local defined in locals.tf
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   sku                 = var.acr_sku
   image_name          = var.docker_image_name
-  git_repo_url        = "https://github.com/liubkkkko/task08.git"
+  git_repo_url        = var.git_repo_url # Pass base URL
   git_pat             = var.git_pat
   tags                = var.tags
+  build_context_path  = local.git_repo_context_path # Pass context path from locals.tf
+
 
   depends_on = [azurerm_resource_group.rg]
 }
 
 module "redis" {
   source                = "./modules/redis"
-  name                  = local.redis_name
+  name                  = local.redis_name # Uses the local defined in locals.tf
   resource_group_name   = azurerm_resource_group.rg.name
   location              = azurerm_resource_group.rg.location
   capacity              = var.redis_capacity
@@ -49,21 +53,21 @@ module "redis" {
 
 module "aks" {
   source              = "./modules/aks"
-  name                = local.aks_name
+  name                = local.aks_name # Uses the local defined in locals.tf
   resource_group_name = azurerm_resource_group.rg.name
-  location            = var.location
+  location            = azurerm_resource_group.rg.location # Use rg location consistently
   node_count          = var.aks_node_count
   node_size           = var.aks_node_size
   os_disk_type        = var.aks_disk_type
   node_pool_name      = "system"
-  acr_id              = module.acr.acr_id
   key_vault_id        = module.keyvault.key_vault_id
   tags                = var.tags
 
-  depends_on = [module.keyvault] # Видалено залежність від module.acr
+  depends_on = [module.keyvault]
 }
 
-resource "azurerm_role_assignment" "acr_pull" {
+# Role assignment for AKS Kubelet Identity (nodes) to pull images from ACR
+resource "azurerm_role_assignment" "aks_acr_pull" {
   scope                = module.acr.acr_id
   role_definition_name = "AcrPull"
   principal_id         = module.aks.kubelet_identity_id
@@ -73,27 +77,28 @@ resource "azurerm_role_assignment" "acr_pull" {
 
 module "aci" {
   source              = "./modules/aci"
-  name                = local.aci_name
+  name                = local.aci_name # Uses the local defined in locals.tf
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   acr_login_server    = module.acr.acr_login_server
   acr_admin_username  = module.acr.admin_username
   acr_admin_password  = module.acr.admin_password
   image_name          = var.docker_image_name
-  image_tag           = local.image_tag
+  image_tag           = local.image_tag # Uses the local defined in locals.tf
   redis_hostname      = module.redis.redis_hostname
   redis_primary_key   = module.redis.redis_primary_key
   tags                = var.tags
 
-  depends_on = [module.acr, module.redis]
+  depends_on = [module.acr.build_task_id, module.redis]
 }
 
-# Використовуємо таймер для додаткової гарантії послідовності
-resource "time_sleep" "wait_for_aks" {
+# Optional delay to allow AKS API server to stabilize
+resource "time_sleep" "wait_for_aks_api" {
   depends_on = [module.aks]
-  create_duration = "30s"
+  create_duration = "60s"
 }
 
+# Apply Kubernetes manifests
 resource "kubectl_manifest" "secret_provider" {
   yaml_body = templatefile("./k8s-manifests/secret-provider.yaml.tftpl", {
     aks_kv_access_identity_id  = module.aks.aks_identity_id
@@ -103,17 +108,17 @@ resource "kubectl_manifest" "secret_provider" {
     tenant_id                  = data.azurerm_client_config.current.tenant_id
   })
 
-  depends_on = [time_sleep.wait_for_aks]
+  depends_on = [time_sleep.wait_for_aks_api, module.keyvault, module.aks]
 }
 
 resource "kubectl_manifest" "deployment" {
   yaml_body = templatefile("./k8s-manifests/deployment.yaml.tftpl", {
     acr_login_server = module.acr.acr_login_server
     app_image_name   = var.docker_image_name
-    image_tag        = local.image_tag
+    image_tag        = local.image_tag # Uses the local defined in locals.tf
   })
 
-  depends_on = [kubectl_manifest.secret_provider, azurerm_role_assignment.acr_pull]
+  depends_on = [kubectl_manifest.secret_provider, azurerm_role_assignment.aks_acr_pull]
 
   wait_for {
     field {
@@ -131,12 +136,13 @@ resource "kubectl_manifest" "service" {
   wait_for {
     field {
       key        = "status.loadBalancer.ingress.[0].ip"
-      value      = "^(\\d+(\\.|$)){4}"
+      value      = "^(\\d{1,3}\\.){3}\\d{1,3}$"
       value_type = "regex"
     }
   }
 }
 
+# Data source to get the Load Balancer IP
 data "kubernetes_service" "app_service" {
   metadata {
     name = "redis-flask-app-service"

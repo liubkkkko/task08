@@ -19,12 +19,12 @@ variable "node_count" {
 }
 
 variable "node_size" {
-  description = "VM size for nodes"
+  description = "VM size for nodes (e.g., Standard_D2ads_v5)"
   type        = string
 }
 
 variable "os_disk_type" {
-  description = "OS disk type for nodes"
+  description = "OS disk type for nodes (e.g., Managed, Ephemeral)"
   type        = string
 }
 
@@ -33,13 +33,14 @@ variable "node_pool_name" {
   type        = string
 }
 
-variable "acr_id" {
-  description = "ACR ID for pull access"
-  type        = string
-}
+# REMOVED - Role assignment moved to root
+# variable "acr_id" {
+#   description = "ACR ID for pull access"
+#   type        = string
+# }
 
 variable "key_vault_id" {
-  description = "Key Vault ID"
+  description = "Key Vault ID that AKS CSI driver needs access to"
   type        = string
 }
 

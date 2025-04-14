@@ -1,3 +1,5 @@
+# variables.tf
+
 variable "resource_group_name" {
   description = "Name of the resource group"
   type        = string
@@ -6,7 +8,7 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure region for resources"
   type        = string
-  default     = "West Europe"
+  # default     = "West Europe" # Keep default or remove if always provided in tfvars
 }
 
 variable "name_pattern" {
@@ -23,6 +25,12 @@ variable "git_pat" {
   description = "Git Personal Access Token for ACR task"
   type        = string
   sensitive   = true
+}
+
+# Додайте цю змінну
+variable "git_repo_url" {
+  description = "HTTPS URL of the Git repository containing the application source code"
+  type        = string
 }
 
 variable "acr_sku" {

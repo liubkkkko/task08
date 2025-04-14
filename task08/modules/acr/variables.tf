@@ -24,17 +24,23 @@ variable "tags" {
 }
 
 variable "image_name" {
-  description = "Docker image name"
+  description = "Docker image name (without tag)"
   type        = string
 }
 
 variable "git_repo_url" {
-  description = "Git repository URL"
+  description = "Git repository URL (e.g., https://github.com/user/repo.git)"
   type        = string
 }
 
 variable "git_pat" {
-  description = "Git Personal Access Token"
+  description = "Git Personal Access Token for source trigger and context access"
   type        = string
   sensitive   = true
+}
+
+# Add this variable
+variable "build_context_path" {
+  description = "Build context path for ACR task (e.g., https://github.com/user/repo.git#main:folder)"
+  type        = string
 }
