@@ -1,3 +1,5 @@
+data "azurerm_client_config" "current" {}
+
 resource "azurerm_resource_group" "rg" {
   name     = local.rg_name
   location = var.location
@@ -49,7 +51,7 @@ module "aks" {
   source              = "./modules/aks"
   name                = local.aks_name
   resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  location            = var.location
   node_count          = var.aks_node_count
   node_size           = var.aks_node_size
   os_disk_type        = var.aks_disk_type
@@ -58,7 +60,15 @@ module "aks" {
   key_vault_id        = module.keyvault.key_vault_id
   tags                = var.tags
 
-  depends_on = [module.acr, module.keyvault]
+  depends_on = [module.keyvault] # Видалено залежність від module.acr
+}
+
+resource "azurerm_role_assignment" "acr_pull" {
+  scope                = module.acr.acr_id
+  role_definition_name = "AcrPull"
+  principal_id         = module.aks.kubelet_identity_id
+
+  depends_on = [module.aks, module.acr]
 }
 
 module "aci" {
@@ -78,7 +88,12 @@ module "aci" {
   depends_on = [module.acr, module.redis]
 }
 
-# Deploy Kubernetes manifests
+# Використовуємо таймер для додаткової гарантії послідовності
+resource "time_sleep" "wait_for_aks" {
+  depends_on = [module.aks]
+  create_duration = "30s"
+}
+
 resource "kubectl_manifest" "secret_provider" {
   yaml_body = templatefile("./k8s-manifests/secret-provider.yaml.tftpl", {
     aks_kv_access_identity_id  = module.aks.aks_identity_id
@@ -88,7 +103,7 @@ resource "kubectl_manifest" "secret_provider" {
     tenant_id                  = data.azurerm_client_config.current.tenant_id
   })
 
-  depends_on = [module.aks]
+  depends_on = [time_sleep.wait_for_aks]
 }
 
 resource "kubectl_manifest" "deployment" {
@@ -98,7 +113,7 @@ resource "kubectl_manifest" "deployment" {
     image_tag        = local.image_tag
   })
 
-  depends_on = [kubectl_manifest.secret_provider]
+  depends_on = [kubectl_manifest.secret_provider, azurerm_role_assignment.acr_pull]
 
   wait_for {
     field {
@@ -128,5 +143,3 @@ data "kubernetes_service" "app_service" {
   }
   depends_on = [kubectl_manifest.service]
 }
-
-data "azurerm_client_config" "current" {}
