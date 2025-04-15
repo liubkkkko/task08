@@ -94,7 +94,7 @@ module "aci" {
 
 # Optional delay to allow AKS API server to stabilize
 resource "time_sleep" "wait_for_aks_api" {
-  depends_on = [module.aks]
+  depends_on      = [module.aks]
   create_duration = "60s"
 }
 
