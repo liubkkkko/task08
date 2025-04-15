@@ -12,7 +12,7 @@ resource "azurerm_container_registry_task" "build_task" {
   container_registry_id = azurerm_container_registry.acr.id
   # REMOVE: resource_group_name   = var.resource_group_name # Explicitly set RG name for task
   # REMOVE: location              = var.location            # Explicitly set location for task
-  enabled               = true                    # Ensure task is enabled
+  enabled = true # Ensure task is enabled
 
   platform {
     os = "Linux"
@@ -21,8 +21,8 @@ resource "azurerm_container_registry_task" "build_task" {
 
   # Define the Docker build step
   docker_step {
-    dockerfile_path = "Dockerfile"                       # Path relative to context
-    context_path    = var.build_context_path             # Use the combined context path variable
+    dockerfile_path = "Dockerfile"                                                  # Path relative to context
+    context_path    = var.build_context_path                                        # Use the combined context path variable
     image_names     = ["${var.image_name}:latest", "${var.image_name}:{{.Run.ID}}"] # Tag with latest and Run ID
     # Use PAT for accessing the context (source code)
     context_access_token = var.git_pat
