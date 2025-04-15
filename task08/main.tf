@@ -77,19 +77,18 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
 
 module "aci" {
   source              = "./modules/aci"
-  name                = local.aci_name # Uses the local defined in locals.tf
+  name                = local.aci_name
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   acr_login_server    = module.acr.acr_login_server
   acr_admin_username  = module.acr.admin_username
   acr_admin_password  = module.acr.admin_password
   image_name          = var.docker_image_name
-  image_tag           = local.image_tag # Uses the local defined in locals.tf
+  image_tag           = local.image_tag
   redis_hostname      = module.redis.redis_hostname
   redis_primary_key   = module.redis.redis_primary_key
   tags                = var.tags
-
-  depends_on = [module.acr.build_task_id, module.redis]
+  depends_on          = [module.acr.task_schedule_run_now_id, module.redis]
 }
 
 # Optional delay to allow AKS API server to stabilize
