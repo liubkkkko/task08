@@ -46,11 +46,9 @@ resource "azurerm_container_registry_task" "build_task" {
   tags = var.tags
 }
 
-# Додаємо ресурс для негайного запуску завдання після його створення
+# Ресурс для негайного запуску завдання після його створення
 resource "azurerm_container_registry_task_schedule_run_now" "initial_run" {
-  # Ім'я цього ресурсу не надто важливе, але має бути унікальним
-  # Воно не створює окремий об'єкт розкладу в Azure, а лише ініціює запуск
-  name                       = "${azurerm_container_registry_task.build_task.name}-initial-run"
+  # REMOVE: name                      = "${azurerm_container_registry_task.build_task.name}-initial-run"
   container_registry_task_id = azurerm_container_registry_task.build_task.id
 
   # Залежність від самого завдання гарантує, що воно існує перед спробою запуску
