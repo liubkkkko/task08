@@ -8,5 +8,5 @@ locals {
   image_tag     = "latest"
 
   # Змінюємо: вказуємо лише відносний шлях до папки контексту
-  build_context_relative_path = "application"
+  build_context_relative_path = "task08/application"
 }
