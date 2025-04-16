@@ -21,16 +21,16 @@ module "keyvault" {
 
 module "acr" {
   source              = "./modules/acr"
-  name                = local.acr_name # Uses the local defined in locals.tf
+  name                = local.acr_name
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   sku                 = var.acr_sku
   image_name          = var.docker_image_name
-  git_repo_url        = var.git_repo_url # Pass base URL
+  git_repo_url        = var.git_repo_url # Базовий URL для тригера
   git_pat             = var.git_pat
   tags                = var.tags
-  build_context_path  = local.git_repo_context_path # Pass context path from locals.tf
-
+  # Змінюємо: передаємо відносний шлях
+  build_context_relative_path  = local.build_context_relative_path
 
   depends_on = [azurerm_resource_group.rg]
 }

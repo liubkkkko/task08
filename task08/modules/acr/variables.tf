@@ -39,8 +39,8 @@ variable "git_pat" {
   sensitive   = true
 }
 
-# Add this variable
-variable "build_context_path" {
-  description = "Build context path for ACR task (e.g., https://github.com/user/repo.git#main:folder)"
+# Змінюємо: змінна для відносного шляху
+variable "build_context_relative_path" {
+  description = "Build context relative path within the repository (e.g., application)"
   type        = string
 }
