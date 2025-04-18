@@ -8,27 +8,25 @@ resource "azurerm_kubernetes_cluster" "aks" {
   tags                = var.tags
 
   default_node_pool {
-    name            = var.node_pool_name
-    node_count      = var.node_count
-    vm_size         = var.node_size
-    os_disk_type    = var.os_disk_type
-    os_disk_size_gb = 70
-    # Призначаємо User Assigned Identity до VMSS нодпулу
-    kubelet_identity {
-      type                      = "UserAssigned"
-      user_assigned_identity_id = var.kubelet_user_assigned_identity_id
-    }
+    name              = var.node_pool_name
+    node_count        = var.node_count
+    vm_size           = var.node_size
+    os_disk_type      = var.os_disk_type
+    os_disk_size_gb   = 70
+    # НЕМАЄ окремого блоку kubelet_identity для UserAssigned
   }
 
-  # Використовуємо ту саму User Assigned Identity для основної ідентичності кластера
+  # Основна ідентичність кластера = User Assigned
   identity {
-    type                      = "UserAssigned"
-    user_assigned_identity_id = var.kubelet_user_assigned_identity_id
+    type = "UserAssigned"
+    # Вказуємо ID створеної нами ідентичності
+    identity_ids = [var.kubelet_user_assigned_identity_id] # Потрібен список ID
   }
 
-  # Залишаємо аддон увімкненим, але не використовуємо його ідентичність для доступу до KV
+  # Вмикаємо аддон, він буде використовувати ідентичність кластера (UAMI),
+  # якщо вона призначена і має доступи до KV
   key_vault_secrets_provider {
-    secret_rotation_enabled  = true
+    secret_rotation_enabled = true
     secret_rotation_interval = "2m"
   }
 
