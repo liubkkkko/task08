@@ -16,8 +16,8 @@ resource "azurerm_container_registry_task" "build_task" {
     os = "Linux"
   }
 
-   docker_step {
-    dockerfile_path      = "Dockerfile" # Шлях до Dockerfile відносно context_path
+  docker_step {
+    dockerfile_path = "Dockerfile" # Шлях до Dockerfile відносно context_path
     # Змінюємо: використовуємо відносний шлях
     context_path         = var.build_context_relative_path
     image_names          = ["${var.image_name}:latest", "${var.image_name}:{{.Run.ID}}"]

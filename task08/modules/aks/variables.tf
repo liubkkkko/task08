@@ -19,12 +19,12 @@ variable "node_count" {
 }
 
 variable "node_size" {
-  description = "VM size for nodes (e.g., Standard_D2ads_v5)"
+  description = "VM size for nodes"
   type        = string
 }
 
 variable "os_disk_type" {
-  description = "OS disk type for nodes (e.g., Managed, Ephemeral)"
+  description = "OS disk type for nodes"
   type        = string
 }
 
@@ -33,14 +33,15 @@ variable "node_pool_name" {
   type        = string
 }
 
-# REMOVED - Role assignment moved to root
-# variable "acr_id" {
-#   description = "ACR ID for pull access"
+# Видаляємо непотрібну змінну
+# variable "key_vault_id" {
+#   description = "Key Vault ID that AKS CSI driver needs access to"
 #   type        = string
 # }
 
-variable "key_vault_id" {
-  description = "Key Vault ID that AKS CSI driver needs access to"
+# Додаємо змінну для ID ідентичності Kubelet
+variable "kubelet_user_assigned_identity_id" {
+  description = "The Resource ID of the User Assigned Identity to assign to the Kubelet and use for Key Vault access."
   type        = string
 }
 

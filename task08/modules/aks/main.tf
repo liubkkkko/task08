@@ -8,18 +8,25 @@ resource "azurerm_kubernetes_cluster" "aks" {
   tags                = var.tags
 
   default_node_pool {
-    name         = var.node_pool_name
-    node_count   = var.node_count
-    vm_size      = var.node_size
-    os_disk_type = var.os_disk_type
-    # Явно вказуємо менший розмір OS-диска для Ephemeral на Standard_D2ads_v5
-    os_disk_size_gb = 70 # Менше ніж 75ГБ тимчасового сховища
+    name            = var.node_pool_name
+    node_count      = var.node_count
+    vm_size         = var.node_size
+    os_disk_type    = var.os_disk_type
+    os_disk_size_gb = 70
+    # Призначаємо User Assigned Identity до VMSS нодпулу
+    kubelet_identity {
+      type                      = "UserAssigned"
+      user_assigned_identity_id = var.kubelet_user_assigned_identity_id
+    }
   }
 
+  # Використовуємо ту саму User Assigned Identity для основної ідентичності кластера
   identity {
-    type = "SystemAssigned"
+    type                      = "UserAssigned"
+    user_assigned_identity_id = var.kubelet_user_assigned_identity_id
   }
 
+  # Залишаємо аддон увімкненим, але не використовуємо його ідентичність для доступу до KV
   key_vault_secrets_provider {
     secret_rotation_enabled  = true
     secret_rotation_interval = "2m"
@@ -34,13 +41,5 @@ resource "azurerm_kubernetes_cluster" "aks" {
   }
 }
 
-resource "azurerm_key_vault_access_policy" "aks_kv_access" {
-  key_vault_id = var.key_vault_id
-  tenant_id    = data.azurerm_client_config.current.tenant_id
-  object_id    = azurerm_kubernetes_cluster.aks.key_vault_secrets_provider[0].secret_identity[0].object_id
-
-  secret_permissions = [
-    "Get",
-    "List"
-  ]
-}
+# Видаляємо створення політики доступу зсередини модуля
+# resource "azurerm_key_vault_access_policy" "aks_kv_access" { ... }
