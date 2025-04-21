@@ -118,8 +118,8 @@ resource "time_sleep" "wait_for_aks_api" {
 # Застосовуємо маніфести Kubernetes
 resource "kubectl_manifest" "secret_provider" {
   yaml_body = templatefile("./k8s-manifests/secret-provider.yaml.tftpl", {
-    # Передаємо Resource ID нової UAMI до шаблону
-    aks_kv_access_identity_id  = azurerm_user_assigned_identity.aks_kv_identity.id
+     # ЗМІНЮЄМО: Передаємо Client ID нової UAMI замість Resource ID
+    aks_kv_access_identity_id  = azurerm_user_assigned_identity.aks_kv_identity.client_id
     kv_name                    = module.keyvault.key_vault_name
     redis_url_secret_name      = var.redis_url_secret_name
     redis_password_secret_name = var.redis_pwd_secret_name
