@@ -77,11 +77,9 @@ module "aks" {
   node_size           = var.aks_node_size
   os_disk_type        = var.aks_disk_type
   node_pool_name      = "system"
-  # Передаємо Resource ID нової ідентичності для використання Kubelet
-  kubelet_user_assigned_identity_id = azurerm_user_assigned_identity.aks_kv_identity.id
-  tags                              = var.tags
-  # Переконуємося, що ідентичність існує перед створенням AKS
-  depends_on = [azurerm_user_assigned_identity.aks_kv_identity]
+  kubelet_user_assigned_identity_id = azurerm_user_assigned_identity.aks_kv_identity.id # Pass the UAMI ID
+  tags                = var.tags
+  depends_on          = [azurerm_user_assigned_identity.aks_kv_identity]
 }
 
 # Призначення ролі для Kubelet Identity (тепер це нова UAMI) для доступу до ACR
