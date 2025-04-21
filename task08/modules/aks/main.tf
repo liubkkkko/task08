@@ -8,11 +8,11 @@ resource "azurerm_kubernetes_cluster" "aks" {
   tags                = var.tags
 
   default_node_pool {
-    name              = var.node_pool_name
-    node_count        = var.node_count
-    vm_size           = var.node_size
-    os_disk_type      = var.os_disk_type
-    os_disk_size_gb   = 70
+    name            = var.node_pool_name
+    node_count      = var.node_count
+    vm_size         = var.node_size
+    os_disk_type    = var.os_disk_type
+    os_disk_size_gb = 70
     # НЕМАЄ окремого блоку kubelet_identity для UserAssigned
   }
 
@@ -26,7 +26,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   # Вмикаємо аддон, він буде використовувати ідентичність кластера (UAMI),
   # якщо вона призначена і має доступи до KV
   key_vault_secrets_provider {
-    secret_rotation_enabled = true
+    secret_rotation_enabled  = true
     secret_rotation_interval = "2m"
   }
 
