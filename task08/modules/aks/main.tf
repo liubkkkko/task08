@@ -20,7 +20,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   identity {
     type = "UserAssigned"
     # Вказуємо ID створеної нами ідентичності
-    identity_ids = [var.kubelet_user_assigned_identity_id] # Потрібен список ID
+    identity_ids = [azurerm_user_assigned_identity.aks_kv_identity.id] # Потрібен список ID
   }
 
   # Вмикаємо аддон, він буде використовувати ідентичність кластера (UAMI),
