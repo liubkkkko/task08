@@ -69,26 +69,25 @@ module "redis" {
 }
 
 module "aks" {
-  source              = "./modules/aks"
-  name                = local.aks_name
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  node_count          = var.aks_node_count
-  node_size           = var.aks_node_size
-  os_disk_type        = var.aks_disk_type
-  node_pool_name      = "system"
+  source                            = "./modules/aks"
+  name                              = local.aks_name
+  resource_group_name               = azurerm_resource_group.rg.name
+  location                          = azurerm_resource_group.rg.location
+  node_count                        = var.aks_node_count
+  node_size                         = var.aks_node_size
+  os_disk_type                      = var.aks_disk_type
+  node_pool_name                    = "system"
   kubelet_user_assigned_identity_id = azurerm_user_assigned_identity.aks_kv_identity.id # Pass the UAMI ID
-  tags                = var.tags
-  depends_on          = [azurerm_user_assigned_identity.aks_kv_identity]
+  tags                              = var.tags
+  depends_on                        = [azurerm_user_assigned_identity.aks_kv_identity]
 }
 
 # Призначення ролі для Kubelet Identity (тепер це нова UAMI) для доступу до ACR
 resource "azurerm_role_assignment" "aks_acr_pull" {
   scope                = module.acr.acr_id
   role_definition_name = "AcrPull"
-  # Тепер призначаємо AcrPull на principal_id нової UAMI
-  principal_id = azurerm_user_assigned_identity.aks_kv_identity.principal_id
-  depends_on   = [module.aks, module.acr, azurerm_user_assigned_identity.aks_kv_identity]
+  principal_id         = azurerm_user_assigned_identity.aks_kv_identity.principal_id
+  depends_on           = [module.aks, module.acr, azurerm_user_assigned_identity.aks_kv_identity]
 }
 
 module "aci" {
@@ -158,6 +157,10 @@ resource "kubectl_manifest" "service" {
   }
 }
 
+resource "time_sleep" "wait_for_deployment" {
+  depends_on      = [kubectl_manifest.deployment]
+  create_duration = "300s" # Wait for 5 minutes
+}
 # Отримуємо IP Load Balancer
 data "kubernetes_service" "app_service" {
   metadata {

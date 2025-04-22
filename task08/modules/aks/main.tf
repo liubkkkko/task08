@@ -1,5 +1,4 @@
 data "azurerm_client_config" "current" {}
-
 resource "azurerm_kubernetes_cluster" "aks" {
   name                = var.name
   location            = var.location
@@ -13,23 +12,17 @@ resource "azurerm_kubernetes_cluster" "aks" {
     vm_size         = var.node_size
     os_disk_type    = var.os_disk_type
     os_disk_size_gb = 70
-    # НЕМАЄ окремого блоку kubelet_identity для UserAssigned
   }
 
-  # Основна ідентичність кластера = User Assigned
-identity {
-  type = "UserAssigned"
-  identity_ids = [var.kubelet_user_assigned_identity_id] # Use the variable passed from the root module
-}
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [var.kubelet_user_assigned_identity_id] # Use the variable passed from the root module
+  }
 
-  # Вмикаємо аддон, він буде використовувати ідентичність кластера (UAMI),
-  # якщо вона призначена і має доступи до KV
   key_vault_secrets_provider {
     secret_rotation_enabled  = true
     secret_rotation_interval = "2m"
   }
-
-  oidc_issuer_enabled = true
 
   network_profile {
     network_plugin = "azure"
@@ -37,6 +30,3 @@ identity {
     outbound_type  = "loadBalancer"
   }
 }
-
-# Видаляємо створення політики доступу зсередини модуля
-# resource "azurerm_key_vault_access_policy" "aks_kv_access" { ... }
