@@ -109,7 +109,7 @@ module "aci" {
 # Додаткова затримка для стабілізації API AKS
 resource "time_sleep" "wait_for_aks_api" {
   depends_on      = [module.aks]
-  create_duration = "60s"
+  create_duration = "300s"
 }
 
 # Застосовуємо маніфести Kubernetes
