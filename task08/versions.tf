@@ -33,5 +33,4 @@ provider "kubectl" {
   client_key             = base64decode(module.aks.kube_config.0.client_key)
   cluster_ca_certificate = base64decode(module.aks.kube_config.0.cluster_ca_certificate)
   load_config_file       = false
-  timeout                = "15m" # Збільшуємо таймаут для операцій kubectl
 }
