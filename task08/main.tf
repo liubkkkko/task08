@@ -1,5 +1,8 @@
 # main.tf
 
+# locals are defined in locals.tf
+# outputs are defined in outputs.tf
+
 data "azurerm_client_config" "current" {}
 
 resource "azurerm_resource_group" "rg" {
@@ -51,7 +54,7 @@ module "acr" {
   git_repo_url                = var.git_repo_url
   git_pat                     = var.git_pat
   tags                        = var.tags
-  build_context_relative_path = local.build_context_relative_path
+  build_context_relative_path = local.build_context_relative_path # Використовуємо виправлений local ("application")
   depends_on                  = [azurerm_resource_group.rg]
 }
 
@@ -110,10 +113,10 @@ module "aci" {
   depends_on          = [module.acr.task_schedule_run_now_id, module.redis.redis_primary_key, module.redis.redis_hostname]
 }
 
-# Додаткова затримка для стабілізації API AKS та CSI driver
-resource "time_sleep" "wait_for_aks_api" {
-  depends_on      = [module.aks, azurerm_key_vault_access_policy.aks_identity_kv_access, azurerm_role_assignment.aks_acr_pull]
-  create_duration = "420s" # Збільшено до 7 хвилин на стабілізацію AKS, прав та CSI
+# Додаткова затримка для стабілізації API AKS, CSI driver та завершення ACR Task
+resource "time_sleep" "wait_for_aks_api" { # Перейменуємо для зрозумілості? Ні, хай буде як у завданні.
+  depends_on      = [module.aks, azurerm_key_vault_access_policy.aks_identity_kv_access, azurerm_role_assignment.aks_acr_pull, module.acr.task_schedule_run_now_id] # Додаємо залежність від тригера ACR Task
+  create_duration = "600s" # Збільшено до 10 хвилин (було 7). Даємо час на білд і поширення. Можливо, варто 720s (12m)? Спробуємо 10.
 }
 
 # Застосовуємо маніфест SecretProviderClass
@@ -126,24 +129,30 @@ resource "kubectl_manifest" "secret_provider" {
     tenant_id                  = data.azurerm_client_config.current.tenant_id
   })
 
-  # Застосовуємо після стабілізації AKS та прав до KV
+  # Застосовуємо після стабілізації AKS та прав до KV, та після затримки
   depends_on = [time_sleep.wait_for_aks_api]
 }
 
-# --- НОВИЙ DATA SOURCE ДЛЯ ОЧІКУВАННЯ K8S SECRET ---
+# Data Source для очікування K8s Secret, який створює CSI driver
 data "kubernetes_secret" "redis_secrets" {
   metadata {
     name      = "redis-secrets" # Ім'я Secret, який створює CSI driver
     namespace = "default"     # Припускаємо default namespace, якщо не вказано інше
   }
 
-  # Залежність від створення SecretProviderClass.
-  # Terraform буде чекати, поки цей Secret з'явиться.
+  # Залежність від створення SecretProviderClass та секретів в Key Vault.
+  # Terraform буде чекати, поки цей Secret з'явиться в K8s.
   depends_on = [
     kubectl_manifest.secret_provider,
+    module.redis.redis_hostname, # Також залежимо від того, що секрети реально були створені в KV
+    module.redis.redis_primary_key,
   ]
+  # Додаємо таймаут для читання data source на випадок, якщо CSI driver зовсім не працює
+  # provider default read timeout for data sources is usually sufficient (5-10 minutes)
+  # Але якщо попередні 10 хвилин time_sleep + час створення SecretProviderClass
+  # виявилися недостатніми для CSI driver, то цей data source також може зависнути.
+  # Явного таймауту в data source немає, він успадковує таймаут провайдера.
 }
-# --- КІНЕЦЬ НОВОГО DATA SOURCE ---
 
 
 # Застосовуємо маніфест Deployment
@@ -155,17 +164,19 @@ resource "kubectl_manifest" "deployment" {
   })
 
   depends_on = [
-    # Залежимо від того, що Kubernetes Secret з'явився (через data source)
+    # Залежимо від того, що Kubernetes Secret з'явився (через data source) - ЦЕ НАЙКРАЩИЙ ІНДИКАТОР ГОТОВНОСТІ
     data.kubernetes_secret.redis_secrets,
     # Залежимо від того, що ідентичність AKS має право тягнути образ з ACR
     azurerm_role_assignment.aks_acr_pull,
-    # Залежимо від того, що ACR Task завершив початкову збірку
-    module.acr.task_schedule_run_now_id,
+    # Ми вже додали залежність ACR task trigger до time_sleep, тож явна залежність тут не обов'язкова, але можна залишити.
+    # module.acr.task_schedule_run_now_id,
   ]
 
-  wait_for_rollout = true # Чекаємо на успішне розгортання Deployment
+  wait_for_rollout = true # Чекаємо на успішне розгортання Deployment (це внутрішній механізм kubectl провайдера)
 
-  # Додатково чекаємо, поки буде доступний хоча б один репліка
+  # Додатково чекаємо, поки буде доступний хоча б один репліка.
+  # Цей wait_for блокує resource до досягнення умови АБО до таймауту провайдера (10 хвилин).
+  # Саме цей таймаут ми бачимо в помилці.
   wait_for {
     field {
       key   = "status.availableReplicas"
@@ -190,11 +201,10 @@ resource "kubectl_manifest" "service" {
   }
 }
 
-# Додаткова затримка після Deployment (можливо, вже не потрібна з wait_for_rollout)
-# Можна залишити, якщо потрібно дати час Service отримати IP після Deployment
-resource "time_sleep" "wait_for_deployment" {
-  depends_on      = [kubectl_manifest.deployment] # Змінено залежність на deployment
-  create_duration = "180s" # Зменшено до 3 хвилин, бо wait_for_rollout вже чекає
+# Додаткова затримка після Service для отримання LoadBalancer IP
+resource "time_sleep" "wait_for_deployment" { # Зберігаємо назву, але залежність від service
+  depends_on      = [kubectl_manifest.service]
+  create_duration = "300s" # 5 хвилин на отримання IP LoadBalancer
 }
 
 # Отримуємо IP Load Balancer
@@ -203,5 +213,7 @@ data "kubernetes_service" "app_service" {
     name = "redis-flask-app-service"
     namespace = "default" # Припускаємо default namespace
   }
-  depends_on = [kubectl_manifest.service] # Залежимо від Service
+  depends_on = [time_sleep.wait_for_deployment] # Залежимо від затримки після Service
 }
+
+# outputs are defined in outputs.tf

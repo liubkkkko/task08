@@ -6,7 +6,7 @@ locals {
   aks_name                    = "${var.name_pattern}-aks"
   aci_name                    = "${var.name_pattern}-ci"
   image_tag                   = "latest"
-  build_context_relative_path = "task08/application"
+  build_context_relative_path = "application"
   # Додаємо ім'я для нової UAMI
   aks_kv_identity_name = "${local.aks_name}-kv-identity"
 }
