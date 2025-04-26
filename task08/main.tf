@@ -115,14 +115,13 @@ resource "time_sleep" "wait_for_aks_api" {
 # Застосовуємо маніфести Kubernetes
 resource "kubectl_manifest" "secret_provider" {
   yaml_body = templatefile("./k8s-manifests/secret-provider.yaml.tftpl", {
-    # ЗМІНЮЄМО: Передаємо Client ID нової UAMI замість Resource ID
     aks_kv_access_identity_id  = azurerm_user_assigned_identity.aks_kv_identity.client_id
     kv_name                    = module.keyvault.key_vault_name
     redis_url_secret_name      = var.redis_url_secret_name
     redis_password_secret_name = var.redis_pwd_secret_name
     tenant_id                  = data.azurerm_client_config.current.tenant_id
   })
-  # Залежить від створення політики доступу KV для нової ідентичності
+
   depends_on = [time_sleep.wait_for_aks_api, azurerm_key_vault_access_policy.aks_identity_kv_access]
 }
 
@@ -133,7 +132,9 @@ resource "kubectl_manifest" "deployment" {
     image_tag        = local.image_tag
   })
 
-  depends_on = [kubectl_manifest.secret_provider, azurerm_role_assignment.aks_acr_pull]
+  depends_on = [kubectl_manifest.secret_provider, azurerm_role_assignment.aks_acr_pull, time_sleep.wait_for_aks_api]
+
+  wait_for_rollout = true
 
   wait_for {
     field {
@@ -151,16 +152,17 @@ resource "kubectl_manifest" "service" {
   wait_for {
     field {
       key        = "status.loadBalancer.ingress.[0].ip"
-      value      = "^(\\d{1,3}\\.){3}\\d{1,3}$"
+      value      = "^(\\d+(\\.|$)){4}"
       value_type = "regex"
     }
   }
 }
 
 resource "time_sleep" "wait_for_deployment" {
-  depends_on      = [kubectl_manifest.deployment]
-  create_duration = "300s" # Wait for 5 minutes
+  depends_on      = [kubectl_manifest.deployment, module.aks]
+  create_duration = "600s" # Wait for 5 minutes
 }
+
 # Отримуємо IP Load Balancer
 data "kubernetes_service" "app_service" {
   metadata {
