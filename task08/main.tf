@@ -62,7 +62,7 @@ module "redis" {
   source                = "./modules/redis"
   name                  = local.redis_name
   resource_group_name   = azurerm_resource_group.rg.name
-  location              = azurerm_resource_group.rg.location
+  location              = var.location
   capacity              = var.redis_capacity
   family                = var.redis_family
   sku                   = var.redis_sku
@@ -113,11 +113,11 @@ module "aci" {
   depends_on          = [module.acr.task_schedule_run_now_id, module.redis.redis_primary_key, module.redis.redis_hostname]
 }
 
-# Додаткова затримка для стабілізації API AKS, CSI driver, Role Assignments та завершення ACR Task
-# Збільшимо її ще більше, щоб бути впевненими
+# Затримка для стабілізації AKS, CSI driver, Role Assignments та завершення ACR Task
+# Зменшимо її до більш розумного значення, але збережемо залежності
 resource "time_sleep" "wait_for_aks_api" {
   depends_on      = [module.aks, azurerm_key_vault_access_policy.aks_identity_kv_access, azurerm_role_assignment.aks_acr_pull, module.acr.task_schedule_run_now_id]
-  create_duration = "1800s" # Збільшено до 30 хвилин (було 25).
+  create_duration = "300s" # Повертаємо до 5 хвилин або трохи більше
 }
 
 # Застосовуємо маніфест SecretProviderClass
@@ -130,8 +130,8 @@ resource "kubectl_manifest" "secret_provider" {
     tenant_id                  = data.azurerm_client_config.current.tenant_id
   })
 
-  # Додаємо залежність від політики доступу до KV
-  depends_on = [time_sleep.wait_for_aks_api, azurerm_key_vault_access_policy.aks_identity_kv_access]
+  # ОНОВЛЕНО: Додаємо залежність від Role Assignment AKS-ACR
+  depends_on = [time_sleep.wait_for_aks_api, azurerm_key_vault_access_policy.aks_identity_kv_access, azurerm_role_assignment.aks_acr_pull]
 }
 
 # Data Source для очікування K8s Secret, який створює CSI driver
@@ -142,6 +142,7 @@ data "kubernetes_secret" "redis_secrets" {
   }
 
   # Залежність від створення SecretProviderClass та секретів в Key Vault.
+  # Terraform буде чекати, поки цей Secret з'явиться в K8s.
   depends_on = [
     kubectl_manifest.secret_provider,
     module.redis.redis_hostname,
@@ -158,7 +159,7 @@ resource "kubectl_manifest" "deployment" {
   })
 
   depends_on = [
-    data.kubernetes_secret.redis_secrets, # Чекаємо на Secret в K8s
+    data.kubernetes_secret.redis_secrets, # Чекаємо на Secret в K8s (це включає успіх CSI driver та автентифікації)
     azurerm_role_assignment.aks_acr_pull, # Чекаємо на права AKS-ACR
   ]
 
