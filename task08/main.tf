@@ -99,7 +99,7 @@ module "aci" {
   source              = "./modules/aci"
   name                = local.aci_name
   resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  location            = var.location
   acr_login_server    = module.acr.acr_login_server
   acr_admin_username  = module.acr.admin_username
   acr_admin_password  = module.acr.admin_password
@@ -117,7 +117,7 @@ module "aci" {
 # Збільшимо її ще більше, щоб бути впевненими
 resource "time_sleep" "wait_for_aks_api" {
   depends_on      = [module.aks, azurerm_key_vault_access_policy.aks_identity_kv_access, azurerm_role_assignment.aks_acr_pull, module.acr.task_schedule_run_now_id]
-  create_duration = "1500s" # Збільшено до 25 хвилин (було 20).
+  create_duration = "1800s" # Збільшено до 30 хвилин (було 25).
 }
 
 # Застосовуємо маніфест SecretProviderClass
@@ -130,7 +130,7 @@ resource "kubectl_manifest" "secret_provider" {
     tenant_id                  = data.azurerm_client_config.current.tenant_id
   })
 
-  # ОНОВЛЕНО: Додаємо залежність від політики доступу до KV
+  # Додаємо залежність від політики доступу до KV
   depends_on = [time_sleep.wait_for_aks_api, azurerm_key_vault_access_policy.aks_identity_kv_access]
 }
 
