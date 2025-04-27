@@ -16,12 +16,12 @@ resource "azurerm_container_registry_task" "build_task" {
     os = "Linux"
   }
 
-  docker_step {
+ docker_step {
     dockerfile_path = "Dockerfile" # Шлях до Dockerfile відносно context_path
-    # Змінюємо: використовуємо відносний шлях
-    context_path         = var.build_context_relative_path
-    image_names          = ["${var.image_name}:latest", "${var.image_name}:{{.Run.ID}}"]
+    # ВИПРАВЛЕНО: Комбінуємо URL репозиторію, гілку та відносний шлях
+    context_path         = "${var.git_repo_url}#main:${var.build_context_relative_path}"
     context_access_token = var.git_pat
+    image_names          = ["${var.image_name}:latest", "${var.image_name}:{{.Run.ID}}"]
   }
 
   source_trigger {
