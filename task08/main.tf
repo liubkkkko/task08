@@ -40,7 +40,7 @@ resource "azurerm_key_vault_access_policy" "aks_identity_kv_access" {
     "List"
   ]
 
-  # ОНОВЛЕНО: Додаємо залежність від модуля AKS
+  # Залежність від модуля AKS та UAMI
   depends_on = [module.keyvault, azurerm_user_assigned_identity.aks_kv_identity, module.aks]
 }
 
@@ -114,9 +114,10 @@ module "aci" {
 }
 
 # Додаткова затримка для стабілізації API AKS, CSI driver, Role Assignments та завершення ACR Task
+# Збільшимо її ще більше, щоб бути впевненими
 resource "time_sleep" "wait_for_aks_api" {
-  depends_on      = [module.aks, azurerm_key_vault_access_policy.aks_identity_kv_access, azurerm_role_assignment.aks_acr_pull, module.acr.task_schedule_run_now_id] # Додаємо залежність від тригера ACR Task
-  create_duration = "1200s" # 20 хвилин
+  depends_on      = [module.aks, azurerm_key_vault_access_policy.aks_identity_kv_access, azurerm_role_assignment.aks_acr_pull, module.acr.task_schedule_run_now_id]
+  create_duration = "1500s" # Збільшено до 25 хвилин (було 20).
 }
 
 # Застосовуємо маніфест SecretProviderClass
@@ -129,9 +130,7 @@ resource "kubectl_manifest" "secret_provider" {
     tenant_id                  = data.azurerm_client_config.current.tenant_id
   })
 
-  # Застосовуємо після стабілізації AKS, прав до KV та затримки.
-  # Явна залежність від політики доступу потрібна, щоб SecretProviderClass
-  # не намагався отримати секрети до того, як ідентичність отримає права.
+  # ОНОВЛЕНО: Додаємо залежність від політики доступу до KV
   depends_on = [time_sleep.wait_for_aks_api, azurerm_key_vault_access_policy.aks_identity_kv_access]
 }
 
@@ -143,14 +142,12 @@ data "kubernetes_secret" "redis_secrets" {
   }
 
   # Залежність від створення SecretProviderClass та секретів в Key Vault.
-  # Terraform буде чекати, поки цей Secret з'явиться в K8s.
   depends_on = [
     kubectl_manifest.secret_provider,
-    module.redis.redis_hostname, # Також залежимо від того, що секрети реально були створені в KV
+    module.redis.redis_hostname,
     module.redis.redis_primary_key,
   ]
 }
-
 
 # Застосовуємо маніфест Deployment
 resource "kubectl_manifest" "deployment" {
@@ -161,18 +158,12 @@ resource "kubectl_manifest" "deployment" {
   })
 
   depends_on = [
-    # Залежимо від того, що Kubernetes Secret з'явився (через data source) - ЦЕ НАЙКРАЩИЙ ІНДИКАТОР ГОТОВНОСТІ CSI Driver
-    data.kubernetes_secret.redis_secrets,
-    # Залежимо від того, що ідентичність AKS має право тягнути образ з ACR
-    azurerm_role_assignment.aks_acr_pull,
-    # Ми вже додали залежність ACR task trigger до time_sleep.
-    # module.acr.task_schedule_run_now_id, # Не потрібна тут, бо чекаємо time_sleep
+    data.kubernetes_secret.redis_secrets, # Чекаємо на Secret в K8s
+    azurerm_role_assignment.aks_acr_pull, # Чекаємо на права AKS-ACR
   ]
 
-  wait_for_rollout = true # Чекаємо на успішне розгортання Deployment (внутрішній механізм провайдера)
+  wait_for_rollout = true
 
-  # Додатково чекаємо, поки буде доступний хоча б один репліка.
-  # Цей wait_for блокує resource до досягнення умови АБО до таймауту провайдера (10 хвилин).
   wait_for {
     field {
       key   = "status.availableReplicas"
@@ -187,7 +178,6 @@ resource "kubectl_manifest" "service" {
 
   depends_on = [kubectl_manifest.deployment]
 
-  # Чекаємо на отримання зовнішнього IP для Load Balancer
   wait_for {
     field {
       key        = "status.loadBalancer.ingress.[0].ip"
@@ -199,15 +189,17 @@ resource "kubectl_manifest" "service" {
 
 # Додаткова затримка після Service для отримання LoadBalancer IP
 resource "time_sleep" "wait_for_deployment" {
-  depends_on      = [kubectl_manifest.service] # Залежність від Service
-  create_duration = "300s" # 5 хвилин на отримання IP LoadBalancer
+  depends_on      = [kubectl_manifest.service]
+  create_duration = "300s"
 }
 
 # Отримуємо IP Load Balancer
 data "kubernetes_service" "app_service" {
   metadata {
     name = "redis-flask-app-service"
-    namespace = "default" # Припускаємо default namespace
+    namespace = "default"
   }
-  depends_on = [time_sleep.wait_for_deployment] # Залежимо від затримки після Service
+  depends_on = [time_sleep.wait_for_deployment]
 }
+
+# outputs are defined in outputs.tf
