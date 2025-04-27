@@ -114,9 +114,9 @@ module "aci" {
 }
 
 # Додаткова затримка для стабілізації API AKS, CSI driver та завершення ACR Task
-resource "time_sleep" "wait_for_aks_api" { # Перейменуємо для зрозумілості? Ні, хай буде як у завданні.
+resource "time_sleep" "wait_for_aks_api" {
   depends_on      = [module.aks, azurerm_key_vault_access_policy.aks_identity_kv_access, azurerm_role_assignment.aks_acr_pull, module.acr.task_schedule_run_now_id] # Додаємо залежність від тригера ACR Task
-  create_duration = "600s" # Збільшено до 10 хвилин (було 7). Даємо час на білд і поширення. Можливо, варто 720s (12m)? Спробуємо 10.
+  create_duration = "900s" # Збільшено до 15 хвилин (було 10).
 }
 
 # Застосовуємо маніфест SecretProviderClass
@@ -147,11 +147,6 @@ data "kubernetes_secret" "redis_secrets" {
     module.redis.redis_hostname, # Також залежимо від того, що секрети реально були створені в KV
     module.redis.redis_primary_key,
   ]
-  # Додаємо таймаут для читання data source на випадок, якщо CSI driver зовсім не працює
-  # provider default read timeout for data sources is usually sufficient (5-10 minutes)
-  # Але якщо попередні 10 хвилин time_sleep + час створення SecretProviderClass
-  # виявилися недостатніми для CSI driver, то цей data source також може зависнути.
-  # Явного таймауту в data source немає, він успадковує таймаут провайдера.
 }
 
 
@@ -164,19 +159,18 @@ resource "kubectl_manifest" "deployment" {
   })
 
   depends_on = [
-    # Залежимо від того, що Kubernetes Secret з'явився (через data source) - ЦЕ НАЙКРАЩИЙ ІНДИКАТОР ГОТОВНОСТІ
+    # Залежимо від того, що Kubernetes Secret з'явився (через data source) - ЦЕ НАЙКРАЩИЙ ІНДИКАТОР ГОТОВНОСТІ CSI Driver
     data.kubernetes_secret.redis_secrets,
     # Залежимо від того, що ідентичність AKS має право тягнути образ з ACR
     azurerm_role_assignment.aks_acr_pull,
-    # Ми вже додали залежність ACR task trigger до time_sleep, тож явна залежність тут не обов'язкова, але можна залишити.
+    # Ми вже додали залежність ACR task trigger до time_sleep.
     # module.acr.task_schedule_run_now_id,
   ]
 
-  wait_for_rollout = true # Чекаємо на успішне розгортання Deployment (це внутрішній механізм kubectl провайдера)
+  wait_for_rollout = true # Чекаємо на успішне розгортання Deployment (внутрішній механізм провайдера)
 
   # Додатково чекаємо, поки буде доступний хоча б один репліка.
   # Цей wait_for блокує resource до досягнення умови АБО до таймауту провайдера (10 хвилин).
-  # Саме цей таймаут ми бачимо в помилці.
   wait_for {
     field {
       key   = "status.availableReplicas"
@@ -202,8 +196,8 @@ resource "kubectl_manifest" "service" {
 }
 
 # Додаткова затримка після Service для отримання LoadBalancer IP
-resource "time_sleep" "wait_for_deployment" { # Зберігаємо назву, але залежність від service
-  depends_on      = [kubectl_manifest.service]
+resource "time_sleep" "wait_for_deployment" {
+  depends_on      = [kubectl_manifest.service] # Залежність від Service
   create_duration = "300s" # 5 хвилин на отримання IP LoadBalancer
 }
 
