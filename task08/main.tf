@@ -40,8 +40,8 @@ resource "azurerm_key_vault_access_policy" "aks_identity_kv_access" {
     "List"
   ]
 
-  # Переконуємося, що KV та ідентичність існують перед створенням політики
-  depends_on = [module.keyvault, azurerm_user_assigned_identity.aks_kv_identity]
+  # ОНОВЛЕНО: Додаємо залежність від модуля AKS
+  depends_on = [module.keyvault, azurerm_user_assigned_identity.aks_kv_identity, module.aks]
 }
 
 module "acr" {
@@ -54,7 +54,7 @@ module "acr" {
   git_repo_url                = var.git_repo_url
   git_pat                     = var.git_pat
   tags                        = var.tags
-  build_context_relative_path = local.build_context_relative_path # Використовуємо виправлений local ("application")
+  build_context_relative_path = local.build_context_relative_path # ВИКОРИСТОВУЄМО "task08/application"
   depends_on                  = [azurerm_resource_group.rg]
 }
 
@@ -113,10 +113,10 @@ module "aci" {
   depends_on          = [module.acr.task_schedule_run_now_id, module.redis.redis_primary_key, module.redis.redis_hostname]
 }
 
-# Додаткова затримка для стабілізації API AKS, CSI driver та завершення ACR Task
+# Додаткова затримка для стабілізації API AKS, CSI driver, Role Assignments та завершення ACR Task
 resource "time_sleep" "wait_for_aks_api" {
   depends_on      = [module.aks, azurerm_key_vault_access_policy.aks_identity_kv_access, azurerm_role_assignment.aks_acr_pull, module.acr.task_schedule_run_now_id] # Додаємо залежність від тригера ACR Task
-  create_duration = "900s" # Збільшено до 15 хвилин (було 10).
+  create_duration = "1200s" # 20 хвилин
 }
 
 # Застосовуємо маніфест SecretProviderClass
@@ -129,8 +129,10 @@ resource "kubectl_manifest" "secret_provider" {
     tenant_id                  = data.azurerm_client_config.current.tenant_id
   })
 
-  # Застосовуємо після стабілізації AKS та прав до KV, та після затримки
-  depends_on = [time_sleep.wait_for_aks_api]
+  # Застосовуємо після стабілізації AKS, прав до KV та затримки.
+  # Явна залежність від політики доступу потрібна, щоб SecretProviderClass
+  # не намагався отримати секрети до того, як ідентичність отримає права.
+  depends_on = [time_sleep.wait_for_aks_api, azurerm_key_vault_access_policy.aks_identity_kv_access]
 }
 
 # Data Source для очікування K8s Secret, який створює CSI driver
@@ -164,7 +166,7 @@ resource "kubectl_manifest" "deployment" {
     # Залежимо від того, що ідентичність AKS має право тягнути образ з ACR
     azurerm_role_assignment.aks_acr_pull,
     # Ми вже додали залежність ACR task trigger до time_sleep.
-    # module.acr.task_schedule_run_now_id,
+    # module.acr.task_schedule_run_now_id, # Не потрібна тут, бо чекаємо time_sleep
   ]
 
   wait_for_rollout = true # Чекаємо на успішне розгортання Deployment (внутрішній механізм провайдера)
@@ -209,5 +211,3 @@ data "kubernetes_service" "app_service" {
   }
   depends_on = [time_sleep.wait_for_deployment] # Залежимо від затримки після Service
 }
-
-# outputs are defined in outputs.tf
