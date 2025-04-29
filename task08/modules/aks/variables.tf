@@ -1,51 +1,52 @@
 variable "name" {
-  description = "Name of the AKS cluster"
+  description = "Назва кластера AKS"
   type        = string
 }
 
 variable "resource_group_name" {
-  description = "Resource group name"
+  description = "Назва групи ресурсів"
   type        = string
 }
 
 variable "location" {
-  description = "Azure region for resources"
+  description = "Регіон Azure для ресурсів"
   type        = string
 }
 
 variable "node_count" {
-  description = "Number of nodes in the default node pool"
+  description = "Кількість вузлів у пулі вузлів за замовчуванням"
   type        = number
 }
 
 variable "node_size" {
-  description = "VM size for nodes"
+  description = "Розмір віртуальної машини для вузлів"
   type        = string
 }
 
 variable "os_disk_type" {
-  description = "OS disk type for nodes"
+  description = "Тип диска ОС для вузлів"
   type        = string
 }
 
 variable "node_pool_name" {
-  description = "Name of the default node pool"
+  description = "Назва пулу вузлів за замовчуванням"
   type        = string
 }
 
-# Видаляємо непотрібну змінну
-# variable "key_vault_id" {
-#   description = "Key Vault ID that AKS CSI driver needs access to"
+# Додаємо зміну для ідентичності ID Змінна Kubelet
+variable "kubelet_user_assigned_identity_id" {
+  description = "Ідентифікатор ресурсу призначеного користувача ідентифікатора, який потрібно призначити Kubelet та використовувати для доступу до Key Vault."
+  type        = string
+}
+
+# --- ВИДАЛЕНО: Ця змінна більше не потрібна в цьому модулі ---
+# variable "kubelet_user_assigned_identity_principal_id" {
+#   description = "Ідентифікатор принципала призначеної користувачем ідентифікації, який потрібно призначити Kubelet та використовувати для доступу до Key Vault."
 #   type        = string
 # }
-
-# Додаємо змінну для ID ідентичності Kubelet
-variable "kubelet_user_assigned_identity_id" {
-  description = "The Resource ID of the User Assigned Identity to assign to the Kubelet and use for Key Vault access."
-  type        = string
-}
+# -------------------------------------------------------------
 
 variable "tags" {
-  description = "Tags to apply to resources"
+  description = "Теги, які слід застосовувати до ресурсів"
   type        = map(string)
 }
