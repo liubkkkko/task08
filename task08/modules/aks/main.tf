@@ -1,47 +1,60 @@
-data "azurerm_client_config" "current" {} # Потрібен для identity
+# modules/aks/main.tf
 
 resource "azurerm_kubernetes_cluster" "aks" {
   name                = var.name
   location            = var.location
   resource_group_name = var.resource_group_name
-  dns_prefix          = var.name # Використовуємо назву кластера як DNS префікс
+  dns_prefix          = var.name
   tags                = var.tags
 
+  # --- Default Node Pool Definition ---
   default_node_pool {
-    name           = var.node_pool_name
-    node_count     = var.node_count
-    vm_size        = var.node_size
-    os_disk_type   = var.os_disk_type
-    os_disk_size_gb = 70 # Додамо стандартний розмір диска ОС
-  }
+    # Arguments for the node pool itself
+    name                = var.node_pool_name
+    node_count          = var.node_count
+    vm_size             = var.node_size
+    os_disk_type        = var.os_disk_type
+    os_disk_size_gb     = 70 # Define OS disk size
 
-  # Основний блок identity для призначення UAMI кластеру/вузлам
+    # Note: NO user_assigned_identity_id argument belongs directly here.
+    # Identity is assigned via top-level identity and kubelet_identity blocks.
+  } # --- End of default_node_pool ---
+
+
+  # --- Top-Level Cluster Identity (Control Plane, Addons) ---
   identity {
     type = "UserAssigned"
-    # Цей identity_id призначає UAMI до кластера/вузлів (Kubelet)
+    # Assigns the UAMI Resource ID to the cluster itself
     identity_ids = [var.kubelet_user_assigned_identity_id]
   }
 
-  # Блок key_vault_secrets_provider для ввімкнення CSI драйвера
+
+  # --- Explicit Kubelet Identity ---
+  # This specifically tells the Kubelet on the nodes which identity to use
+  kubelet_identity {
+    client_id                 = var.kubelet_user_assigned_identity_client_id
+    object_id                 = var.kubelet_user_assigned_identity_object_id
+    user_assigned_identity_id = var.kubelet_user_assigned_identity_id
+  }
+
+
+  # --- CSI Driver Addon Configuration ---
   key_vault_secrets_provider {
     secret_rotation_enabled  = true
     secret_rotation_interval = "2m"
-    # --- ВИДАЛЕНО: Немає вкладеного блоку identity тут ---
-    # identity {
-    #   object_id = var.kubelet_user_assigned_identity_principal_id # ВИДАЛЕНО
-    #   user_assigned_identity_id = var.kubelet_user_assigned_identity_id # ВИДАЛЕНО
-    # }
-    # ----------------------------------------------------
+    # No nested identity block needed; it uses the kubelet_identity
   }
 
-  # Додаємо мережевий профіль згідно з рекомендованими практиками
+
+  # --- Network Profile ---
   network_profile {
-      network_plugin = "azure" # Рекомендовано для більшості сценаріїв
-      network_policy = "azure" # Рекомендовано для більшості сценаріїв
-      outbound_type  = "loadBalancer" # Стандартний вихідний тип
+    network_plugin = "azure"
+    network_policy = "azure"
+    outbound_type  = "loadBalancer"
   }
 
-  # --- ВИДАЛЕНО: Непотрібний блок azure_active_directory ---
-  # azure_active_directory {} # Порожній блок необхідний для some API calls
-  # ----------------------------------------------------------
-}
+  # --- Other Cluster Settings ---
+  role_based_access_control_enabled = true
+  sku_tier                          = "Free" # Using Free tier as per default behavior
+
+} # --- End of azurerm_kubernetes_cluster ---

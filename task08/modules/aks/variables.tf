@@ -1,52 +1,57 @@
 variable "name" {
-  description = "Назва кластера AKS"
+  description = "Name of the AKS cluster"
   type        = string
 }
 
 variable "resource_group_name" {
-  description = "Назва групи ресурсів"
+  description = "Resource group name"
   type        = string
 }
 
 variable "location" {
-  description = "Регіон Azure для ресурсів"
+  description = "Azure region for resources"
   type        = string
 }
 
 variable "node_count" {
-  description = "Кількість вузлів у пулі вузлів за замовчуванням"
+  description = "Node count for default node pool"
   type        = number
 }
 
 variable "node_size" {
-  description = "Розмір віртуальної машини для вузлів"
+  description = "VM size for nodes"
   type        = string
 }
 
 variable "os_disk_type" {
-  description = "Тип диска ОС для вузлів"
+  description = "OS disk type for nodes"
   type        = string
 }
 
 variable "node_pool_name" {
-  description = "Назва пулу вузлів за замовчуванням"
+  description = "Name of the default node pool"
   type        = string
 }
 
-# Додаємо зміну для ідентичності ID Змінна Kubelet
+# Variable for the UAMI *Resource ID* (used in top-level identity block and kubelet_identity block)
 variable "kubelet_user_assigned_identity_id" {
-  description = "Ідентифікатор ресурсу призначеного користувача ідентифікатора, який потрібно призначити Kubelet та використовувати для доступу до Key Vault."
+  description = "The Resource ID of the User Assigned Identity to assign to Kubelet."
   type        = string
 }
 
-# --- ВИДАЛЕНО: Ця змінна більше не потрібна в цьому модулі ---
-# variable "kubelet_user_assigned_identity_principal_id" {
-#   description = "Ідентифікатор принципала призначеної користувачем ідентифікації, який потрібно призначити Kubelet та використовувати для доступу до Key Vault."
-#   type        = string
-# }
-# -------------------------------------------------------------
+# >>> NEW: Variable for the UAMI *Client ID* (used in kubelet_identity block) <<<
+variable "kubelet_user_assigned_identity_client_id" {
+  description = "The Client ID of the User Assigned Identity assigned to Kubelet."
+  type        = string
+}
+
+# >>> NEW: Variable for the UAMI *Object ID* (used in kubelet_identity block) <<<
+variable "kubelet_user_assigned_identity_object_id" {
+  description = "The Object ID (Principal ID) of the User Assigned Identity assigned to Kubelet."
+  type        = string
+}
 
 variable "tags" {
-  description = "Теги, які слід застосовувати до ресурсів"
+  description = "Tags to apply to resources"
   type        = map(string)
 }
