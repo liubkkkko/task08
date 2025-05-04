@@ -14,7 +14,7 @@ terraform {
       version = ">= 2.0.0" # Переконайтеся, що версія сумісна з вашим кластером AKS
     }
     time = { # Додайте провайдер time для time_sleep
-      source = "hashicorp/time"
+      source  = "hashicorp/time"
       version = "~> 0.9.1"
     }
   }

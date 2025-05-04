@@ -22,8 +22,8 @@ resource "azurerm_user_assigned_identity" "aks_kv_identity" {
 # This is required for the AKS control plane (using this same UAMI)
 # to assign this identity to the Kubelet.
 resource "azurerm_role_assignment" "aks_identity_operator" {
-  scope                = azurerm_user_assigned_identity.aks_kv_identity.id         # Scope: The UAMI itself
-  role_definition_name = "Managed Identity Operator"                               # Role Name
+  scope                = azurerm_user_assigned_identity.aks_kv_identity.id           # Scope: The UAMI itself
+  role_definition_name = "Managed Identity Operator"                                 # Role Name
   principal_id         = azurerm_user_assigned_identity.aks_kv_identity.principal_id # Assignee: The UAMI's principal
   # Depends on the UAMI being created
   depends_on = [azurerm_user_assigned_identity.aks_kv_identity]
@@ -147,11 +147,11 @@ resource "time_sleep" "wait_for_aks_identity_and_permissions" {
 # Apply SecretProviderClass manifest
 resource "kubectl_manifest" "secret_provider" {
   yaml_body = templatefile("./k8s-manifests/secret-provider.yaml.tftpl", {
-    aks_kv_access_identity_id = azurerm_user_assigned_identity.aks_kv_identity.client_id
-    kv_name                   = module.keyvault.key_vault_name
-    redis_url_secret_name     = var.redis_url_secret_name
+    aks_kv_access_identity_id  = azurerm_user_assigned_identity.aks_kv_identity.client_id
+    kv_name                    = module.keyvault.key_vault_name
+    redis_url_secret_name      = var.redis_url_secret_name
     redis_password_secret_name = var.redis_pwd_secret_name
-    tenant_id                 = data.azurerm_client_config.current.tenant_id
+    tenant_id                  = data.azurerm_client_config.current.tenant_id
   })
   depends_on = [
     time_sleep.wait_for_aks_identity_and_permissions,
@@ -195,8 +195,8 @@ resource "kubectl_manifest" "deployment" {
 
 # Apply Service manifest
 resource "kubectl_manifest" "service" {
-  yaml_body = file("./k8s-manifests/service.yaml")
-  depends_on = [kubectl_manifest.deployment]
+  yaml_body        = file("./k8s-manifests/service.yaml")
+  depends_on       = [kubectl_manifest.deployment]
   wait_for_rollout = true
   wait_for {
     field {

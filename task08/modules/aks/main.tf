@@ -10,11 +10,11 @@ resource "azurerm_kubernetes_cluster" "aks" {
   # --- Default Node Pool Definition ---
   default_node_pool {
     # Arguments for the node pool itself
-    name                = var.node_pool_name
-    node_count          = var.node_count
-    vm_size             = var.node_size
-    os_disk_type        = var.os_disk_type
-    os_disk_size_gb     = 70 # Define OS disk size
+    name            = var.node_pool_name
+    node_count      = var.node_count
+    vm_size         = var.node_size
+    os_disk_type    = var.os_disk_type
+    os_disk_size_gb = 70 # Define OS disk size
 
     # Note: NO user_assigned_identity_id argument belongs directly here.
     # Identity is assigned via top-level identity and kubelet_identity blocks.
