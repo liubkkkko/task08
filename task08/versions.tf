@@ -7,11 +7,15 @@ terraform {
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = ">= 2.20.0"
+      version = ">= 2.20.0" # Переконайтеся, що версія сумісна з вашим кластером AKS
     }
     kubectl = {
       source  = "alekc/kubectl"
-      version = ">= 2.0.0"
+      version = ">= 2.0.0" # Переконайтеся, що версія сумісна з вашим кластером AKS
+    }
+    time = { # Додайте провайдер time для time_sleep
+      source  = "hashicorp/time"
+      version = "~> 0.9.1"
     }
   }
 }
@@ -25,6 +29,7 @@ provider "kubernetes" {
   client_certificate     = base64decode(module.aks.kube_config[0].client_certificate)
   client_key             = base64decode(module.aks.kube_config[0].client_key)
   cluster_ca_certificate = base64decode(module.aks.kube_config[0].cluster_ca_certificate)
+  # ВИДАЛЕНО: load_config_file = false - не підтримується при явному налаштуванні
 }
 
 provider "kubectl" {
@@ -32,5 +37,8 @@ provider "kubectl" {
   client_certificate     = base64decode(module.aks.kube_config.0.client_certificate)
   client_key             = base64decode(module.aks.kube_config.0.client_key)
   cluster_ca_certificate = base64decode(module.aks.kube_config.0.cluster_ca_certificate)
-  load_config_file       = false
+  # ВИДАЛЕНО: load_config_file = false - не підтримується при явному налаштуванні
 }
+
+# Додайте провайдер time
+provider "time" {}

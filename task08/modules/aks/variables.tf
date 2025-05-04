@@ -14,7 +14,7 @@ variable "location" {
 }
 
 variable "node_count" {
-  description = "Number of nodes in the default node pool"
+  description = "Node count for default node pool"
   type        = number
 }
 
@@ -33,15 +33,21 @@ variable "node_pool_name" {
   type        = string
 }
 
-# Видаляємо непотрібну змінну
-# variable "key_vault_id" {
-#   description = "Key Vault ID that AKS CSI driver needs access to"
-#   type        = string
-# }
-
-# Додаємо змінну для ID ідентичності Kubelet
+# Variable for the UAMI *Resource ID* (used in top-level identity block and kubelet_identity block)
 variable "kubelet_user_assigned_identity_id" {
-  description = "The Resource ID of the User Assigned Identity to assign to the Kubelet and use for Key Vault access."
+  description = "The Resource ID of the User Assigned Identity to assign to Kubelet."
+  type        = string
+}
+
+# >>> NEW: Variable for the UAMI *Client ID* (used in kubelet_identity block) <<<
+variable "kubelet_user_assigned_identity_client_id" {
+  description = "The Client ID of the User Assigned Identity assigned to Kubelet."
+  type        = string
+}
+
+# >>> NEW: Variable for the UAMI *Object ID* (used in kubelet_identity block) <<<
+variable "kubelet_user_assigned_identity_object_id" {
+  description = "The Object ID (Principal ID) of the User Assigned Identity assigned to Kubelet."
   type        = string
 }
 

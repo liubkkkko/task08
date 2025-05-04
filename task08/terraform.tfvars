@@ -1,9 +1,7 @@
-# terraform.tfvars
-
 resource_group_name   = "cmtr-13f58f43-mod8-rg"
-location              = "West Europe" # Or your desired location
+location              = "East US" # Змінено регіон
 name_pattern          = "cmtr-13f58f43-mod8"
-git_repo_url          = "https://github.com/liubkkkko/task08.git" # <-- Додайте URL вашого репозиторію
+git_repo_url          = "https://github.com/liubkkkko/task08.git"
 acr_sku               = "Standard"
 docker_image_name     = "cmtr-13f58f43-mod8-app"
 redis_capacity        = 2
@@ -19,5 +17,3 @@ redis_pwd_secret_name = "redis-primary-key"
 tags = {
   Creator = "liubomyr_puliak@epam.com"
 }
-
-# git_pat = "YOUR_PAT_HERE" # Provide via prompt or environment variable

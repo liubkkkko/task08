@@ -1,7 +1,6 @@
 # main.tf
-
-# locals are defined in locals.tf
-# outputs are defined in outputs.tf
+# Local values defined in locals.tf
+# Outputs defined in outputs.tf
 
 data "azurerm_client_config" "current" {}
 
@@ -11,13 +10,25 @@ resource "azurerm_resource_group" "rg" {
   tags     = var.tags
 }
 
-# Створюємо User Assigned Managed Identity для взаємодії AKS <-> Key Vault
+# Create User Assigned Managed Identity for AKS <-> Key Vault interaction
 resource "azurerm_user_assigned_identity" "aks_kv_identity" {
   name                = local.aks_kv_identity_name
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   tags                = var.tags
 }
+
+# --- NEW: Grant the UAMI Managed Identity Operator role scoped to itself ---
+# This is required for the AKS control plane (using this same UAMI)
+# to assign this identity to the Kubelet.
+resource "azurerm_role_assignment" "aks_identity_operator" {
+  scope                = azurerm_user_assigned_identity.aks_kv_identity.id           # Scope: The UAMI itself
+  role_definition_name = "Managed Identity Operator"                                 # Role Name
+  principal_id         = azurerm_user_assigned_identity.aks_kv_identity.principal_id # Assignee: The UAMI's principal
+  # Depends on the UAMI being created
+  depends_on = [azurerm_user_assigned_identity.aks_kv_identity]
+}
+# --- End of NEW Role Assignment ---
 
 module "keyvault" {
   source              = "./modules/keyvault"
@@ -29,19 +40,13 @@ module "keyvault" {
   depends_on          = [azurerm_resource_group.rg]
 }
 
-# Надаємо новій User Assigned Identity доступ до секретів Key Vault
+# Grant the UAMI access to Key Vault secrets for CSI driver
 resource "azurerm_key_vault_access_policy" "aks_identity_kv_access" {
-  key_vault_id = module.keyvault.key_vault_id
-  tenant_id    = data.azurerm_client_config.current.tenant_id
-  object_id    = azurerm_user_assigned_identity.aks_kv_identity.principal_id # Використовуємо principal_id нової UAMI
-
-  secret_permissions = [
-    "Get",
-    "List"
-  ]
-
-  # Залежність від модуля AKS та UAMI
-  depends_on = [module.keyvault, azurerm_user_assigned_identity.aks_kv_identity, module.aks]
+  key_vault_id       = module.keyvault.key_vault_id
+  tenant_id          = data.azurerm_client_config.current.tenant_id
+  object_id          = azurerm_user_assigned_identity.aks_kv_identity.principal_id
+  secret_permissions = ["Get", "List"]
+  depends_on         = [module.keyvault, azurerm_user_assigned_identity.aks_kv_identity]
 }
 
 module "acr" {
@@ -54,7 +59,7 @@ module "acr" {
   git_repo_url                = var.git_repo_url
   git_pat                     = var.git_pat
   tags                        = var.tags
-  build_context_relative_path = local.build_context_relative_path # ВИКОРИСТОВУЄМО "task08/application"
+  build_context_relative_path = local.build_context_relative_path
   depends_on                  = [azurerm_resource_group.rg]
 }
 
@@ -62,7 +67,7 @@ module "redis" {
   source                = "./modules/redis"
   name                  = local.redis_name
   resource_group_name   = azurerm_resource_group.rg.name
-  location              = var.location
+  location              = azurerm_resource_group.rg.location
   capacity              = var.redis_capacity
   family                = var.redis_family
   sku                   = var.redis_sku
@@ -70,24 +75,34 @@ module "redis" {
   redis_url_secret_name = var.redis_url_secret_name
   redis_pwd_secret_name = var.redis_pwd_secret_name
   tags                  = var.tags
-  depends_on            = [module.keyvault] # Залежність від KV, куди будуть записані секрети
+  depends_on            = [module.keyvault]
 }
 
+# Call the AKS module
 module "aks" {
-  source                            = "./modules/aks"
-  name                              = local.aks_name
-  resource_group_name               = azurerm_resource_group.rg.name
-  location                          = azurerm_resource_group.rg.location
-  node_count                        = var.aks_node_count
-  node_size                         = var.aks_node_size
-  os_disk_type                      = var.aks_disk_type
-  node_pool_name                    = "system"
-  kubelet_user_assigned_identity_id = azurerm_user_assigned_identity.aks_kv_identity.id # Pass the UAMI ID
-  tags                              = var.tags
-  depends_on                        = [azurerm_user_assigned_identity.aks_kv_identity]
+  source                                   = "./modules/aks"
+  name                                     = local.aks_name
+  resource_group_name                      = azurerm_resource_group.rg.name
+  location                                 = azurerm_resource_group.rg.location
+  node_count                               = var.aks_node_count
+  node_size                                = var.aks_node_size
+  os_disk_type                             = var.aks_disk_type
+  node_pool_name                           = "system"
+  kubelet_user_assigned_identity_id        = azurerm_user_assigned_identity.aks_kv_identity.id
+  kubelet_user_assigned_identity_client_id = azurerm_user_assigned_identity.aks_kv_identity.client_id
+  kubelet_user_assigned_identity_object_id = azurerm_user_assigned_identity.aks_kv_identity.principal_id
+  tags                                     = var.tags
+  # --- UPDATED Dependency ---
+  # AKS cluster creation must wait for the Managed Identity Operator role assignment
+  depends_on = [
+    azurerm_user_assigned_identity.aks_kv_identity,
+    azurerm_resource_group.rg,
+    azurerm_role_assignment.aks_identity_operator # Add dependency on the new role assignment
+  ]
+  # --- End UPDATED Dependency ---
 }
 
-# Призначення ролі для Kubelet Identity (тепер це нова UAMI) для доступу до ACR
+# Assign AcrPull role to the UAMI for pulling images
 resource "azurerm_role_assignment" "aks_acr_pull" {
   scope                = module.acr.acr_id
   role_definition_name = "AcrPull"
@@ -99,72 +114,77 @@ module "aci" {
   source              = "./modules/aci"
   name                = local.aci_name
   resource_group_name = azurerm_resource_group.rg.name
-  location            = var.location
+  location            = azurerm_resource_group.rg.location
   acr_login_server    = module.acr.acr_login_server
   acr_admin_username  = module.acr.admin_username
   acr_admin_password  = module.acr.admin_password
   image_name          = var.docker_image_name
   image_tag           = local.image_tag
-  # Передаємо значення секретів Redis з Key Vault, використовуючи виходи модуля redis
   redis_hostname      = module.redis.redis_hostname
   redis_primary_key   = module.redis.redis_primary_key
   tags                = var.tags
-  # Залежність від початкового запуску ACR Task та від створення секретів Redis
-  depends_on          = [module.acr.task_schedule_run_now_id, module.redis.redis_primary_key, module.redis.redis_hostname]
+  depends_on = [
+    module.acr.task_schedule_run_now_id,
+    module.redis,
+  ]
 }
 
-# Затримка для стабілізації AKS, CSI driver, Role Assignments та завершення ACR Task
-# Зменшимо її до більш розумного значення, але збережемо залежності
-resource "time_sleep" "wait_for_aks_api" {
-  depends_on      = [module.aks, azurerm_key_vault_access_policy.aks_identity_kv_access, azurerm_role_assignment.aks_acr_pull, module.acr.task_schedule_run_now_id]
-  create_duration = "300s" # Повертаємо до 5 хвилин або трохи більше
+# Sleep to allow permissions propagation
+resource "time_sleep" "wait_for_aks_identity_and_permissions" {
+  # --- UPDATED Dependency ---
+  # Wait for AKS, *all* relevant role assignments/policies, and ACR initial build
+  depends_on = [
+    module.aks.aks_id,
+    azurerm_key_vault_access_policy.aks_identity_kv_access, # KV Access
+    azurerm_role_assignment.aks_acr_pull,                   # ACR Pull Access
+    azurerm_role_assignment.aks_identity_operator,          # Managed Identity Operator Role
+    module.acr.task_schedule_run_now_id                     # Image build
+  ]
+  # --- End UPDATED Dependency ---
+  create_duration = "600s" # Keep 10 minutes
 }
 
-# Застосовуємо маніфест SecretProviderClass
+# Apply SecretProviderClass manifest
 resource "kubectl_manifest" "secret_provider" {
   yaml_body = templatefile("./k8s-manifests/secret-provider.yaml.tftpl", {
-    aks_kv_access_identity_id  = azurerm_user_assigned_identity.aks_kv_identity.client_id # Використовуємо client_id для manifest
+    aks_kv_access_identity_id  = azurerm_user_assigned_identity.aks_kv_identity.client_id
     kv_name                    = module.keyvault.key_vault_name
     redis_url_secret_name      = var.redis_url_secret_name
     redis_password_secret_name = var.redis_pwd_secret_name
     tenant_id                  = data.azurerm_client_config.current.tenant_id
   })
-
-  # ОНОВЛЕНО: Додаємо залежність від Role Assignment AKS-ACR
-  depends_on = [time_sleep.wait_for_aks_api, azurerm_key_vault_access_policy.aks_identity_kv_access, azurerm_role_assignment.aks_acr_pull]
-}
-
-# Data Source для очікування K8s Secret, який створює CSI driver
-data "kubernetes_secret" "redis_secrets" {
-  metadata {
-    name      = "redis-secrets" # Ім'я Secret, який створює CSI driver
-    namespace = "default"     # Припускаємо default namespace, якщо не вказано інше
-  }
-
-  # Залежність від створення SecretProviderClass та секретів в Key Vault.
-  # Terraform буде чекати, поки цей Secret з'явиться в K8s.
   depends_on = [
-    kubectl_manifest.secret_provider,
-    module.redis.redis_hostname,
-    module.redis.redis_primary_key,
+    time_sleep.wait_for_aks_identity_and_permissions,
+    module.redis,
+    azurerm_key_vault_access_policy.aks_identity_kv_access,
   ]
 }
 
-# Застосовуємо маніфест Deployment
+# Data source to wait for K8s Secret created by CSI driver
+data "kubernetes_secret" "redis_secrets" {
+  metadata {
+    name      = "redis-secrets"
+    namespace = "default"
+  }
+  depends_on = [
+    kubectl_manifest.secret_provider,
+    module.redis,
+    azurerm_key_vault_access_policy.aks_identity_kv_access,
+  ]
+}
+
+# Apply Deployment manifest
 resource "kubectl_manifest" "deployment" {
   yaml_body = templatefile("./k8s-manifests/deployment.yaml.tftpl", {
     acr_login_server = module.acr.acr_login_server
     app_image_name   = var.docker_image_name
     image_tag        = local.image_tag
   })
-
   depends_on = [
-    data.kubernetes_secret.redis_secrets, # Чекаємо на Secret в K8s (це включає успіх CSI driver та автентифікації)
-    azurerm_role_assignment.aks_acr_pull, # Чекаємо на права AKS-ACR
+    data.kubernetes_secret.redis_secrets,
+    azurerm_role_assignment.aks_acr_pull,
   ]
-
   wait_for_rollout = true
-
   wait_for {
     field {
       key   = "status.availableReplicas"
@@ -173,12 +193,11 @@ resource "kubectl_manifest" "deployment" {
   }
 }
 
-# Застосовуємо маніфест Service
+# Apply Service manifest
 resource "kubectl_manifest" "service" {
-  yaml_body = file("./k8s-manifests/service.yaml")
-
-  depends_on = [kubectl_manifest.deployment]
-
+  yaml_body        = file("./k8s-manifests/service.yaml")
+  depends_on       = [kubectl_manifest.deployment]
+  wait_for_rollout = true
   wait_for {
     field {
       key        = "status.loadBalancer.ingress.[0].ip"
@@ -188,19 +207,19 @@ resource "kubectl_manifest" "service" {
   }
 }
 
-# Додаткова затримка після Service для отримання LoadBalancer IP
-resource "time_sleep" "wait_for_deployment" {
+# Additional sleep after service
+resource "time_sleep" "wait_for_service_lb_ip" {
   depends_on      = [kubectl_manifest.service]
-  create_duration = "300s"
+  create_duration = "60s"
 }
 
-# Отримуємо IP Load Balancer
+# Get LoadBalancer IP Data
 data "kubernetes_service" "app_service" {
   metadata {
-    name = "redis-flask-app-service"
+    name      = "redis-flask-app-service"
     namespace = "default"
   }
-  depends_on = [time_sleep.wait_for_deployment]
+  depends_on = [time_sleep.wait_for_service_lb_ip]
 }
 
-# outputs are defined in outputs.tf
+# Outputs defined in outputs.tf

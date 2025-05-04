@@ -9,14 +9,12 @@ output "kube_config" {
   sensitive   = true
 }
 
-output "kubelet_identity_id" {
-  description = "The Principal ID of the User Assigned Managed Identity assigned to the cluster/kubelet"
-  # Principal ID все ще доступний через індекс, оскільки блок identity - це список
-  value = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+# This output might be less directly relevant now, as we explicitly define the kubelet identity via inputs.
+# You could keep it or remove it. Let's output the identity info confirmed to be applied.
+output "aks_applied_kubelet_identity" {
+  description = "Details of the identity explicitly configured for the Kubelet."
+  value       = azurerm_kubernetes_cluster.aks.kubelet_identity[0] # Access the first (and only) element
 }
 
-output "kubelet_user_assigned_identity_resource_id" {
-  description = "The Resource ID of the User Assigned Identity used by the cluster/Kubelet."
-  # Використовуємо one() для отримання єдиного елемента з множини identity_ids
-  value = one(azurerm_kubernetes_cluster.aks.identity[0].identity_ids)
-}
+# Remove the previous confusing outputs like kubelet_identity_id and kubelet_user_assigned_identity_resource_id
+# if they were just reflecting the identity block assignment.
