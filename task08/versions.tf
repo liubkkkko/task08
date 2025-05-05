@@ -7,15 +7,15 @@ terraform {
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = ">= 2.20.0" # Переконайтеся, що версія сумісна з вашим кластером AKS
+      version = ">= 2.20.0"
     }
     kubectl = {
       source  = "alekc/kubectl"
-      version = ">= 2.0.0" # Переконайтеся, що версія сумісна з вашим кластером AKS
+      version = ">= 2.0.0"
     }
-    time = { # Додайте провайдер time для time_sleep
+    time = {
       source  = "hashicorp/time"
-      version = "~> 0.9.1"
+      version = "~> 0.9.1" # Uses 0.9.2 after init -upgrade
     }
   }
 }
@@ -24,21 +24,25 @@ provider "azurerm" {
   features {}
 }
 
+# Configure Kubernetes provider using individual attributes from the module output
+# This provider does NOT support load_config_file = false directly
 provider "kubernetes" {
   host                   = module.aks.kube_config[0].host
   client_certificate     = base64decode(module.aks.kube_config[0].client_certificate)
   client_key             = base64decode(module.aks.kube_config[0].client_key)
   cluster_ca_certificate = base64decode(module.aks.kube_config[0].cluster_ca_certificate)
-  # ВИДАЛЕНО: load_config_file = false - не підтримується при явному налаштуванні
+  # REMOVED: load_config_file = false
 }
 
+# Configure Kubectl provider using individual attributes from the module output
+# Add load_config_file = false here as discussed in the GitHub issue
 provider "kubectl" {
-  host                   = module.aks.kube_config.0.host
-  client_certificate     = base64decode(module.aks.kube_config.0.client_certificate)
-  client_key             = base64decode(module.aks.kube_config.0.client_key)
-  cluster_ca_certificate = base64decode(module.aks.kube_config.0.cluster_ca_certificate)
-  # ВИДАЛЕНО: load_config_file = false - не підтримується при явному налаштуванні
+  host                   = module.aks.kube_config[0].host
+  client_certificate     = base64decode(module.aks.kube_config[0].client_certificate)
+  client_key             = base64decode(module.aks.kube_config[0].client_key)
+  cluster_ca_certificate = base64decode(module.aks.kube_config[0].cluster_ca_certificate)
+  load_config_file       = false # <<< KEPT: Prevent loading external kubeconfig for THIS provider
 }
 
-# Додайте провайдер time
+# Add time provider block
 provider "time" {}
