@@ -18,17 +18,13 @@ resource "azurerm_user_assigned_identity" "aks_kv_identity" {
   tags                = var.tags
 }
 
-# --- NEW: Grant the UAMI Managed Identity Operator role scoped to itself ---
-# This is required for the AKS control plane (using this same UAMI)
-# to assign this identity to the Kubelet.
+# Grant the UAMI Managed Identity Operator role scoped to itself
 resource "azurerm_role_assignment" "aks_identity_operator" {
-  scope                = azurerm_user_assigned_identity.aks_kv_identity.id           # Scope: The UAMI itself
-  role_definition_name = "Managed Identity Operator"                                 # Role Name
-  principal_id         = azurerm_user_assigned_identity.aks_kv_identity.principal_id # Assignee: The UAMI's principal
-  # Depends on the UAMI being created
-  depends_on = [azurerm_user_assigned_identity.aks_kv_identity]
+  scope                = azurerm_user_assigned_identity.aks_kv_identity.id
+  role_definition_name = "Managed Identity Operator"
+  principal_id         = azurerm_user_assigned_identity.aks_kv_identity.principal_id
+  depends_on           = [azurerm_user_assigned_identity.aks_kv_identity]
 }
-# --- End of NEW Role Assignment ---
 
 module "keyvault" {
   source              = "./modules/keyvault"
@@ -92,14 +88,11 @@ module "aks" {
   kubelet_user_assigned_identity_client_id = azurerm_user_assigned_identity.aks_kv_identity.client_id
   kubelet_user_assigned_identity_object_id = azurerm_user_assigned_identity.aks_kv_identity.principal_id
   tags                                     = var.tags
-  # --- UPDATED Dependency ---
-  # AKS cluster creation must wait for the Managed Identity Operator role assignment
   depends_on = [
     azurerm_user_assigned_identity.aks_kv_identity,
     azurerm_resource_group.rg,
     azurerm_role_assignment.aks_identity_operator # Add dependency on the new role assignment
   ]
-  # --- End UPDATED Dependency ---
 }
 
 # Assign AcrPull role to the UAMI for pulling images
@@ -107,7 +100,7 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
   scope                = module.acr.acr_id
   role_definition_name = "AcrPull"
   principal_id         = azurerm_user_assigned_identity.aks_kv_identity.principal_id
-  depends_on           = [module.aks, module.acr, azurerm_user_assigned_identity.aks_kv_identity]
+  depends_on           = [module.aks.aks_id, module.acr.acr_id, azurerm_user_assigned_identity.aks_kv_identity] # Added aks_id
 }
 
 module "aci" {
@@ -131,16 +124,13 @@ module "aci" {
 
 # Sleep to allow permissions propagation
 resource "time_sleep" "wait_for_aks_identity_and_permissions" {
-  # --- UPDATED Dependency ---
-  # Wait for AKS, *all* relevant role assignments/policies, and ACR initial build
   depends_on = [
     module.aks.aks_id,
-    azurerm_key_vault_access_policy.aks_identity_kv_access, # KV Access
-    azurerm_role_assignment.aks_acr_pull,                   # ACR Pull Access
-    azurerm_role_assignment.aks_identity_operator,          # Managed Identity Operator Role
-    module.acr.task_schedule_run_now_id                     # Image build
+    azurerm_key_vault_access_policy.aks_identity_kv_access,
+    azurerm_role_assignment.aks_acr_pull,
+    azurerm_role_assignment.aks_identity_operator,
+    module.acr.task_schedule_run_now_id
   ]
-  # --- End UPDATED Dependency ---
   create_duration = "600s" # Keep 10 minutes
 }
 
@@ -157,6 +147,7 @@ resource "kubectl_manifest" "secret_provider" {
     time_sleep.wait_for_aks_identity_and_permissions,
     module.redis,
     azurerm_key_vault_access_policy.aks_identity_kv_access,
+    module.aks.aks_id # <<< ADDED Direct dependency
   ]
 }
 
@@ -170,6 +161,7 @@ data "kubernetes_secret" "redis_secrets" {
     kubectl_manifest.secret_provider,
     module.redis,
     azurerm_key_vault_access_policy.aks_identity_kv_access,
+    module.aks.aks_id # <<< ADDED Direct dependency
   ]
 }
 
@@ -183,6 +175,7 @@ resource "kubectl_manifest" "deployment" {
   depends_on = [
     data.kubernetes_secret.redis_secrets,
     azurerm_role_assignment.aks_acr_pull,
+    module.aks.aks_id # <<< ADDED Direct dependency
   ]
   wait_for_rollout = true
   wait_for {
@@ -195,8 +188,11 @@ resource "kubectl_manifest" "deployment" {
 
 # Apply Service manifest
 resource "kubectl_manifest" "service" {
-  yaml_body        = file("./k8s-manifests/service.yaml")
-  depends_on       = [kubectl_manifest.deployment]
+  yaml_body = file("./k8s-manifests/service.yaml")
+  depends_on = [
+    kubectl_manifest.deployment,
+    module.aks.aks_id # <<< ADDED Direct dependency
+    ]
   wait_for_rollout = true
   wait_for {
     field {
@@ -209,7 +205,7 @@ resource "kubectl_manifest" "service" {
 
 # Additional sleep after service
 resource "time_sleep" "wait_for_service_lb_ip" {
-  depends_on      = [kubectl_manifest.service]
+  depends_on = [kubectl_manifest.service]
   create_duration = "60s"
 }
 
@@ -219,7 +215,10 @@ data "kubernetes_service" "app_service" {
     name      = "redis-flask-app-service"
     namespace = "default"
   }
-  depends_on = [time_sleep.wait_for_service_lb_ip]
+  depends_on = [
+    time_sleep.wait_for_service_lb_ip,
+    module.aks.aks_id # <<< ADDED Direct dependency
+    ]
 }
 
 # Outputs defined in outputs.tf
