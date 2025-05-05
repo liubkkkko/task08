@@ -192,7 +192,7 @@ resource "kubectl_manifest" "service" {
   depends_on = [
     kubectl_manifest.deployment,
     module.aks.aks_id # <<< ADDED Direct dependency
-    ]
+  ]
   wait_for_rollout = true
   wait_for {
     field {
@@ -205,7 +205,7 @@ resource "kubectl_manifest" "service" {
 
 # Additional sleep after service
 resource "time_sleep" "wait_for_service_lb_ip" {
-  depends_on = [kubectl_manifest.service]
+  depends_on      = [kubectl_manifest.service]
   create_duration = "60s"
 }
 
@@ -218,7 +218,7 @@ data "kubernetes_service" "app_service" {
   depends_on = [
     time_sleep.wait_for_service_lb_ip,
     module.aks.aks_id # <<< ADDED Direct dependency
-    ]
+  ]
 }
 
 # Outputs defined in outputs.tf
